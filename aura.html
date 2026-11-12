@@ -5454,11 +5454,116 @@
         }
       }
 
+      function parsePromptEntities(rawPrompt) {
+        let clean = (rawPrompt || "").trim();
+        const removePhrases = [
+          /^tôi muốn nghe\s*(list|danh sách|playlist|nhạc|bài hát)?\s*(của)?\s*/i,
+          /^mình muốn nghe\s*(list|danh sách|playlist|nhạc|bài hát)?\s*(của)?\s*/i,
+          /^muốn nghe\s*(list|danh sách|playlist|nhạc|bài hát)?\s*(của)?\s*/i,
+          /^cho tôi\s*(list|danh sách|playlist|nhạc|bài hát)?\s*(của)?\s*/i,
+          /^tạo\s*(cho tôi|cho mình)?\s*(list|playlist|danh sách|bài hát)?\s*(của)?\s*/i,
+          /^phát\s*(nhạc|bài hát|list)?\s*(của)?\s*/i,
+          /^nghe\s*(list|playlist|nhạc)?\s*(của)?\s*/i,
+          /^list\s*(của)?\s*/i,
+          /^playlist\s*(của)?\s*/i
+        ];
+        removePhrases.forEach(function (re) {
+          clean = clean.replace(re, "");
+        });
+
+        const parts = clean
+          .split(/\s*(?:\+|\band\b|\bvà\b|\bvới\b|\bx\b|,)\s*/i)
+          .map(function (s) { return s.trim(); })
+          .filter(function (s) { return s.length > 0; });
+
+        return parts.length ? parts : [rawPrompt.trim()];
+      }
+
+      function resolveAIPlaylistFromPrompt(rawPrompt, callback) {
+        const entities = parsePromptEntities(rawPrompt);
+        const isMultipleArtists = entities.length > 1;
+
+        let completed = 0;
+        const resultsByEntity = [];
+
+        entities.forEach(function (entity, idx) {
+          fetchLiveMusicTracks(entity, function (items) {
+            resultsByEntity[idx] = items || [];
+            completed += 1;
+            if (completed === entities.length) {
+              onAllEntitiesFetched();
+            }
+          });
+        });
+
+        function onAllEntitiesFetched() {
+          let combinedPicks = [];
+
+          if (isMultipleArtists) {
+            const perArtist = Math.max(3, Math.floor(6 / entities.length));
+            entities.forEach(function (ent, idx) {
+              const list = resultsByEntity[idx] || [];
+              const mapped = list.slice(0, perArtist).map(function (it) { return mapItunesItemToTrack(it); });
+              combinedPicks = combinedPicks.concat(mapped);
+            });
+          } else {
+            const list = resultsByEntity[0] || [];
+            if (list.length > 0) {
+              combinedPicks = list.slice(0, 6).map(function (it) { return mapItunesItemToTrack(it); });
+            }
+          }
+
+          if (combinedPicks.length > 0) {
+            const seenIds = {};
+            const uniquePicks = [];
+            combinedPicks.forEach(function (t) {
+              if (!seenIds[t.id]) {
+                seenIds[t.id] = true;
+                uniquePicks.push(t);
+              }
+            });
+
+            let title = "";
+            let auraMessage = "";
+            let intentLabel = "";
+
+            if (isMultipleArtists) {
+              const capEntities = entities.map(function (e) {
+                return e.split(/\s+/).map(function (w) { return w.charAt(0).toUpperCase() + w.slice(1); }).join(" ");
+              });
+              title = capEntities.join(" x ") + " Mix";
+              intentLabel = "Tuyển chọn nghệ sĩ · " + uniquePicks.length + " bài hát";
+              auraMessage = "Mình đã tìm thấy và tổng hợp các bài hát của " + capEntities.join(" & ") + " đúng như bạn yêu cầu rồi nè!";
+            } else if (entities[0]) {
+              const entName = entities[0].split(/\s+/).map(function (w) { return w.charAt(0).toUpperCase() + w.slice(1); }).join(" ");
+              title = "AURA: " + entName + " Selection";
+              intentLabel = "Tuyển tập âm nhạc · " + uniquePicks.length + " bài hát";
+              auraMessage = "Mình đã tìm thấy các ca khúc của \"" + entName + "\" cho bạn rồi nè!";
+            }
+
+            const previewText = rawPrompt.trim().length > 68 ? rawPrompt.trim().slice(0, 68) + "..." : rawPrompt.trim();
+            const explanation = "Đã phân tích yêu cầu \"" + previewText + "\" → Tự động tìm kiếm & chọn lọc " + uniquePicks.length + " bài hát theo đúng nghệ sĩ trong prompt của bạn.";
+
+            callback({
+              title: title || "AURA Custom Mix",
+              intentLabel: intentLabel || ("Tuyển tập · " + uniquePicks.length + " bài"),
+              explanation: explanation,
+              auraMessage: auraMessage,
+              tracks: uniquePicks
+            });
+            return;
+          }
+
+          const localFallback = analyzeListeningIntent(rawPrompt);
+          callback(localFallback);
+        }
+      }
+
       function generateAIPlaylist(promptText, isRefine) {
         const inputEl = document.getElementById("aiPromptInput");
         const clean = (promptText || inputEl.value).trim();
         if (!clean) {
-          showToast("Type a vibe or pick a suggested prompt");
+          showToast("Hãy nhập nghệ sĩ, thể loại hoặc tâm trạng bạn muốn nghe");
           return;
         }
         if (state.aiTimerId) {
@@ -5481,16 +5586,14 @@
         resultCard.classList.remove("is-visible");
         thinking.classList.add("is-visible");
 
-        const delay = state.prefs.reduceMotion ? 120 : 1200;
-        state.aiTimerId = setTimeout(function () {
-          state.aiTimerId = null;
-          const res = analyzeListeningIntent(state.lastAiPrompt || clean);
+        resolveAIPlaylistFromPrompt(state.lastAiPrompt || clean, function (res) {
           state.lastAiResult = res;
           thinking.classList.remove("is-visible");
-          appendStudioBubble("aura", "Mình đã chuẩn bị mix \"" + res.title + "\" (" + res.intentLabel + ") cho bạn rồi nè!");
+          appendStudioBubble("aura", res.auraMessage || ("Mình đã chuẩn bị mix \"" + res.title + "\" (" + res.intentLabel + ") cho bạn rồi nè!"));
           renderAIResult(res);
           resultCard.classList.add("is-visible");
-        }, delay);
+          resultCard.scrollIntoView({ behavior: "smooth", block: "start" });
+        });
       }
 
       function renderAIResult(res) {
