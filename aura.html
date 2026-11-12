@@ -1817,8 +1817,14 @@
     }
 
     .mini-icon-btn.is-liked {
-      color: #E25E9B;
+      color: #FF2B5E !important;
       animation: heartPop 0.34s ease;
+    }
+
+    .mini-icon-btn.is-liked svg {
+      fill: #FF2B5E !important;
+      stroke: #FF2B5E !important;
+      filter: drop-shadow(0 0 6px rgba(255, 43, 94, 0.55));
     }
 
     .genre-grid {
@@ -2281,7 +2287,13 @@
     }
 
     .player-upnext-section .mini-icon-btn.is-liked {
-      color: #E25E9B;
+      color: #FF2B5E !important;
+    }
+
+    .player-upnext-section .mini-icon-btn.is-liked svg {
+      fill: #FF2B5E !important;
+      stroke: #FF2B5E !important;
+      filter: drop-shadow(0 0 6px rgba(255, 43, 94, 0.55));
     }
 
     .player-stars {
@@ -4347,7 +4359,8 @@
         userPlaylists: "aura:v1:user_playlists",
         recent: "aura:v1:recent",
         prefs: "aura:v1:prefs",
-        volume: "aura:v1:volume"
+        volume: "aura:v1:volume",
+        customTracks: "aura:v1:custom_tracks"
       };
 
       const memoryStorage = {};
@@ -4371,6 +4384,32 @@
           // Safe in-memory fallback already updated
         }
       }
+
+      function saveCustomTrackToStorage(track) {
+        if (!track || !track.id) return;
+        try {
+          const list = readStorage(STORAGE_KEYS.customTracks, []);
+          const exists = Array.isArray(list) && list.some(function (x) { return x && x.id === track.id; });
+          if (!exists) {
+            const updated = Array.isArray(list) ? list.slice() : [];
+            updated.push(track);
+            if (updated.length > 250) updated.shift();
+            writeStorage(STORAGE_KEYS.customTracks, updated);
+          }
+        } catch (err) {}
+      }
+
+      // Restore custom tracks into memory catalog on load
+      try {
+        const cachedCustom = readStorage(STORAGE_KEYS.customTracks, []);
+        if (Array.isArray(cachedCustom)) {
+          cachedCustom.forEach(function (ct) {
+            if (ct && ct.id && !TRACKS.some(function (t) { return t.id === ct.id; })) {
+              TRACKS.push(ct);
+            }
+          });
+        }
+      } catch (err) {}
 
       /* ======================================================================
          STATE
@@ -4593,7 +4632,18 @@
       }
 
       function getTrackById(id) {
-        return TRACKS.find(function (t) { return t.id === id; }) || TRACKS[0];
+        if (!id) return TRACKS[0];
+        let found = TRACKS.find(function (t) { return t && t.id === id; });
+        if (found) return found;
+        const customList = readStorage(STORAGE_KEYS.customTracks, []);
+        if (Array.isArray(customList)) {
+          found = customList.find(function (t) { return t && t.id === id; });
+          if (found) {
+            TRACKS.push(found);
+            return found;
+          }
+        }
+        return TRACKS[0];
       }
 
       function isLiked(trackId) {
@@ -4603,14 +4653,22 @@
       /* ======================================================================
          TOAST & MODALS
          ====================================================================== */
-      function showToast(message) {
+      function showToast(message, actionCallback) {
         const toast = document.getElementById("toast");
+        if (!toast) return;
         toast.textContent = message;
         toast.classList.add("is-visible");
+        toast.style.cursor = actionCallback ? "pointer" : "default";
+        toast.onclick = actionCallback ? function () {
+          try { actionCallback(); } catch (err) {}
+          toast.classList.remove("is-visible");
+          toast.onclick = null;
+        } : null;
         if (state.toastTimerId) clearTimeout(state.toastTimerId);
         state.toastTimerId = setTimeout(function () {
           toast.classList.remove("is-visible");
-        }, 2300);
+          toast.onclick = null;
+        }, actionCallback ? 3400 : 2300);
       }
 
       function openSheet(buildFn) {
@@ -4815,6 +4873,7 @@
 
         const likeBtn = document.createElement("button");
         likeBtn.className = "mini-icon-btn" + (isLiked(track.id) ? " is-liked" : "");
+        likeBtn.setAttribute("data-like-id", track.id);
         likeBtn.setAttribute("aria-label", "Toggle favorite for " + track.title);
         setButtonIcon(likeBtn, isLiked(track.id) ? "icon-heart-filled" : "icon-heart", 16);
         likeBtn.addEventListener("click", function (e) {
@@ -5193,6 +5252,7 @@
           previewUrl: item.previewUrl || ""
         };
         TRACKS.push(mapped);
+        saveCustomTrackToStorage(mapped);
         return mapped;
       }
 
@@ -6211,7 +6271,9 @@
 
         const liked = isLiked(track.id);
         const likeBtn = document.getElementById("playerLikeBtn");
-        likeBtn.style.color = liked ? "#E25E9B" : "#E9E0FF";
+        likeBtn.style.color = liked ? "#FF2B5E" : "#E9E0FF";
+        likeBtn.classList.toggle("is-liked", liked);
+        likeBtn.setAttribute("data-liked", liked ? "true" : "false");
         const likeIcon = document.getElementById("playerLikeIcon");
         clearNode(likeIcon);
         likeIcon.appendChild(svgEl("use", { href: liked ? "#icon-heart-filled" : "#icon-heart" }));
@@ -6364,16 +6426,53 @@
          LIBRARY, FAVORITES, PLAYLISTS & FOCUS TIMER
          ====================================================================== */
       function toggleFavorite(trackId) {
+        if (!trackId) return;
         const idx = state.likes.indexOf(trackId);
-        if (idx === -1) {
-          state.likes.unshift(trackId);
-          showToast("Added to Liked Songs ♥");
+        const willLike = (idx === -1);
+        const tr = getTrackById(trackId);
+        if (tr && tr.id) {
+          saveCustomTrackToStorage(tr);
+        }
+
+        if (willLike) {
+          state.likes = [trackId].concat(state.likes.filter(function (x) { return x !== trackId; }));
+          showToast("Đã thêm vào Bài hát yêu thích ♥ (Chạm để xem trong Thư viện)", function () {
+            switchTab("library");
+            state.libraryTab = "liked";
+            renderLibrary();
+          });
         } else {
-          state.likes.splice(idx, 1);
-          showToast("Removed from Liked Songs");
+          state.likes = state.likes.filter(function (x) { return x !== trackId; });
+          showToast("Đã xóa khỏi Bài hát yêu thích");
         }
         writeStorage(STORAGE_KEYS.likes, state.likes);
-        updatePlayerUI();
+
+        // Immediate visual update for all like buttons across the UI
+        document.querySelectorAll('.mini-icon-btn[data-like-id="' + trackId + '"]').forEach(function (btn) {
+          btn.classList.toggle("is-liked", willLike);
+          setButtonIcon(btn, willLike ? "icon-heart-filled" : "icon-heart", 16);
+          if (willLike) {
+            btn.style.animation = "none";
+            btn.offsetHeight; /* trigger reflow */
+            btn.style.animation = "heartPop 0.35s ease";
+          }
+        });
+
+        // Update player overlay like button if currently playing this track
+        if (state.currentTrackId === trackId) {
+          const pLikeBtn = document.getElementById("playerLikeBtn");
+          if (pLikeBtn) {
+            pLikeBtn.style.color = willLike ? "#FF2B5E" : "#E9E0FF";
+            pLikeBtn.classList.toggle("is-liked", willLike);
+            pLikeBtn.setAttribute("data-liked", willLike ? "true" : "false");
+          }
+          const pLikeIcon = document.getElementById("playerLikeIcon");
+          if (pLikeIcon) {
+            clearNode(pLikeIcon);
+            pLikeIcon.appendChild(svgEl("use", { href: willLike ? "#icon-heart-filled" : "#icon-heart" }));
+          }
+        }
+
         if (state.activeTab === "discover") renderDiscover();
         if (state.activeTab === "library") renderLibrary();
         if (state.activeTab === "profile") renderProfile();
@@ -6490,14 +6589,18 @@
           if (!state.likes.length) {
             const empty = document.createElement("div");
             empty.className = "empty-state";
-            empty.textContent = "Tap ♡ on any track to save your favorites here.";
+            empty.textContent = "Nhấn ♡ trên bất kỳ bài hát nào để lưu vào danh sách yêu thích tại đây.";
             container.appendChild(empty);
             return;
           }
           const list = document.createElement("div");
           list.className = "track-list";
+          const seen = {};
           state.likes.forEach(function (id) {
-            list.appendChild(createTrackRow(getTrackById(id)));
+            if (!seen[id]) {
+              seen[id] = true;
+              list.appendChild(createTrackRow(getTrackById(id)));
+            }
           });
           container.appendChild(list);
         } else if (state.libraryTab === "saved") {
