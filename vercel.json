@@ -1,6 +1,8 @@
 {
   "version": 2,
   "rewrites": [
+    { "source": "/api/yt", "destination": "/api/yt.py" },
+    { "source": "/api/search", "destination": "/api/yt.py" },
     { "source": "/", "destination": "/aura.html" }
   ]
 }

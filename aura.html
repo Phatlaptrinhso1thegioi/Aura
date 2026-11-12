@@ -4870,27 +4870,67 @@
       }
 
       function performLiveHomeSearch(query) {
-        const clean = (query || "").trim();
+        const clean = (query || "").replace(/[\u00A0\s]+/g, " ").trim();
         if (!clean) return;
 
-        fetchItunesJSONP(clean, "VN", 24, function (dataVN) {
-          const itemsVN = dataVN && Array.isArray(dataVN.results) ? dataVN.results.filter(function (r) { return r.previewUrl; }) : [];
-          if (itemsVN.length > 0) {
-            renderLiveHomeResults(clean, itemsVN);
-            return;
-          }
-          fetchItunesJSONP(clean, "US", 24, function (dataUS) {
-            const itemsUS = dataUS && Array.isArray(dataUS.results) ? dataUS.results.filter(function (r) { return r.previewUrl; }) : [];
-            if (itemsUS.length > 0) {
-              renderLiveHomeResults(clean, itemsUS);
-            } else {
-              const statusEl = document.getElementById("homeSearchStatusMsg");
-              if (statusEl) {
-                statusEl.textContent = "Không tìm thấy bài hát nào cho \"" + clean + "\". Hãy thử tìm bài hát hoặc nghệ sĩ khác.";
-              }
+        fetchLiveMusicTracks(clean, function (items) {
+          if (items && items.length > 0) {
+            renderLiveHomeResults(clean, items);
+          } else {
+            const statusEl = document.getElementById("homeSearchStatusMsg");
+            if (statusEl) {
+              statusEl.textContent = "Không tìm thấy bài hát nào cho \"" + clean + "\". Hãy thử tìm bài hát hoặc nghệ sĩ khác.";
             }
-          });
+          }
         });
+      }
+
+      function fetchLiveMusicTracks(term, callback) {
+        let finished = false;
+
+        function done(res) {
+          if (finished) return;
+          finished = true;
+          callback(res || []);
+        }
+
+        // Layer 1: Same-origin backend API (Render & Vercel) - immune to mobile adblock & Safari tracking protection
+        fetch("/api/search?q=" + encodeURIComponent(term))
+          .then(function (r) { return r.json(); })
+          .then(function (data) {
+            if (data && Array.isArray(data.results) && data.results.length) {
+              done(data.results);
+            } else {
+              throw new Error("Empty backend results");
+            }
+          })
+          .catch(function () {
+            // Layer 2: Direct Apple Music / iTunes CORS GET request
+            fetch("https://itunes.apple.com/search?term=" + encodeURIComponent(term) + "&country=VN&media=music&entity=song&limit=24")
+              .then(function (r) { return r.json(); })
+              .then(function (data) {
+                if (data && Array.isArray(data.results) && data.results.length) {
+                  done(data.results);
+                } else {
+                  return fetch("https://itunes.apple.com/search?term=" + encodeURIComponent(term) + "&country=US&media=music&entity=song&limit=24")
+                    .then(function (r2) { return r2.json(); })
+                    .then(function (d2) { done(d2 && d2.results ? d2.results : []); });
+                }
+              })
+              .catch(function () {
+                // Layer 3: JSONP Fallback
+                fetchItunesJSONP(term, "VN", 24, function (dataVN) {
+                  const items = dataVN && Array.isArray(dataVN.results) ? dataVN.results : [];
+                  if (items.length) {
+                    done(items);
+                  } else {
+                    fetchItunesJSONP(term, "US", 24, function (dataUS) {
+                      done(dataUS && Array.isArray(dataUS.results) ? dataUS.results : []);
+                    });
+                  }
+                });
+              });
+          });
       }
 
       function renderLiveHomeResults(query, items) {
@@ -4899,7 +4939,9 @@
         const inp = document.getElementById("homeSearchInput");
         if (!list) return;
 
-        if (inp && inp.value.trim() && inp.value.trim().toLowerCase() !== query.toLowerCase()) {
+        const currentVal = (inp ? inp.value : "").replace(/[\u00A0\s]+/g, " ").trim().toLowerCase();
+        const searchVal = (query || "").replace(/[\u00A0\s]+/g, " ").trim().toLowerCase();
+        if (currentVal && searchVal && currentVal !== searchVal) {
           return;
         }
 
@@ -6480,15 +6522,36 @@
           clearFilterBtn.addEventListener("click", clearHomeMusicFilter);
         }
 
-        document.getElementById("homeSearchForm").addEventListener("submit", function (e) {
-          e.preventDefault();
-          const q = document.getElementById("homeSearchInput").value.trim();
+        const homeInp = document.getElementById("homeSearchInput");
+        const homeForm = document.getElementById("homeSearchForm");
+
+        function submitHomeSearch() {
+          const q = (homeInp.value || "").replace(/[\u00A0\s]+/g, " ").trim();
           if (q) {
             filterHomeMusic(q, "query");
+          } else {
+            clearHomeMusicFilter();
+          }
+        }
+
+        homeForm.addEventListener("submit", function (e) {
+          e.preventDefault();
+          homeInp.blur();
+          submitHomeSearch();
+        });
+
+        homeInp.addEventListener("search", submitHomeSearch);
+
+        homeInp.addEventListener("keydown", function (e) {
+          if (e.key === "Enter" || e.keyCode === 13) {
+            e.preventDefault();
+            homeInp.blur();
+            submitHomeSearch();
           }
         });
-        document.getElementById("homeSearchInput").addEventListener("input", function (e) {
-          const q = e.target.value.trim();
+
+        homeInp.addEventListener("input", function (e) {
+          const q = e.target.value.replace(/[\u00A0\s]+/g, " ").trim();
           if (!q) {
             clearHomeMusicFilter();
             return;
