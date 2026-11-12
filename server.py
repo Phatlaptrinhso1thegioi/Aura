@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Lightweight static + full-track YouTube ID lookup server for AURA."""
+"""Lightweight static + full-track YouTube ID lookup + Authentication & Sync Server for AURA."""
 
 import http.server
 import json
@@ -8,6 +8,8 @@ import re
 import socketserver
 import urllib.parse
 import urllib.request
+
+import auth_db
 
 PORT = int(os.environ.get("PORT", 8765))
 ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -71,8 +73,44 @@ class AuraHandler(http.server.SimpleHTTPRequestHandler):
         self.send_header("Pragma", "no-cache")
         super().end_headers()
 
+    def _get_auth_token(self):
+        auth = self.headers.get("Authorization", "")
+        if auth.startswith("Bearer "):
+            return auth[7:].strip()
+        return None
+
+    def _read_json_body(self):
+        try:
+            length = int(self.headers.get("Content-Length", 0))
+            if length <= 0:
+                return {}
+            raw = self.rfile.read(length).decode("utf-8")
+            return json.loads(raw)
+        except Exception:
+            return {}
+
+    def do_OPTIONS(self):
+        self.send_response(204)
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
+        self.end_headers()
+
     def do_GET(self):
         parsed = urllib.parse.urlparse(self.path)
+
+        if parsed.path == "/api/auth/me":
+            token = self._get_auth_token()
+            if not token:
+                self._send_json(401, {"error": "Chưa đăng nhập."})
+                return
+            user, data = auth_db.get_user_by_token(token)
+            if not user:
+                self._send_json(401, {"error": "Phiên đăng nhập đã hết hạn."})
+                return
+            self._send_json(200, {"user": user, "data": data})
+            return
+
         if parsed.path == "/api/search":
             qs = urllib.parse.parse_qs(parsed.query)
             q = (qs.get("q") or [""])[0].strip()
@@ -103,12 +141,71 @@ class AuraHandler(http.server.SimpleHTTPRequestHandler):
             self.path = "/aura.html"
         super().do_GET()
 
+    def do_POST(self):
+        parsed = urllib.parse.urlparse(self.path)
+
+        if parsed.path == "/api/auth/register":
+            payload = self._read_json_body()
+            email = payload.get("email", "")
+            password = payload.get("password", "")
+            full_name = payload.get("full_name", "")
+            try:
+                user, token, data = auth_db.register_user(email, password, full_name)
+                self._send_json(201, {"user": user, "token": token, "data": data, "message": "Đăng ký thành công!"})
+            except ValueError as val_err:
+                self._send_json(400, {"error": str(val_err)})
+            except Exception as exc:
+                self._send_json(500, {"error": "Lỗi máy chủ khi đăng ký: " + str(exc)})
+            return
+
+        if parsed.path == "/api/auth/login":
+            payload = self._read_json_body()
+            email = payload.get("email", "")
+            password = payload.get("password", "")
+            try:
+                user, token, data = auth_db.login_user(email, password)
+                self._send_json(200, {"user": user, "token": token, "data": data, "message": "Đăng nhập thành công!"})
+            except ValueError as val_err:
+                self._send_json(400, {"error": str(val_err)})
+            except Exception as exc:
+                self._send_json(500, {"error": "Lỗi máy chủ khi đăng nhập: " + str(exc)})
+            return
+
+        if parsed.path == "/api/auth/logout":
+            token = self._get_auth_token()
+            if token:
+                auth_db.logout_user(token)
+            self._send_json(200, {"message": "Đã đăng xuất thành công."})
+            return
+
+        if parsed.path == "/api/user/sync":
+            token = self._get_auth_token()
+            if not token:
+                self._send_json(401, {"error": "Chưa đăng nhập."})
+                return
+            user, _ = auth_db.get_user_by_token(token)
+            if not user:
+                self._send_json(401, {"error": "Phiên đăng nhập không hợp lệ hoặc đã hết hạn."})
+                return
+
+            payload = self._read_json_body()
+            try:
+                auth_db.save_user_data(user["id"], payload)
+                self._send_json(200, {"success": True, "message": "Đã đồng bộ dữ liệu vào tài khoản cá nhân!"})
+            except Exception as exc:
+                self._send_json(500, {"error": "Lỗi lưu dữ liệu: " + str(exc)})
+            return
+
+        self._send_json(404, {"error": "Endpoint không tồn tại."})
+
     def _send_json(self, code, payload):
-        body = json.dumps(payload).encode("utf-8")
+        body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
         self.send_response(code)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
         self.end_headers()
         self.wfile.write(body)
 
@@ -122,6 +219,7 @@ class ReusableTCPServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
 
 
 if __name__ == "__main__":
+    auth_db.init_db()
     with ReusableTCPServer(("", PORT), AuraHandler) as httpd:
-        print(f"AURA server running at http://localhost:{PORT}/aura.html", flush=True)
+        print(f"AURA server with Auth & Database running at http://localhost:{PORT}/aura.html", flush=True)
         httpd.serve_forever()
