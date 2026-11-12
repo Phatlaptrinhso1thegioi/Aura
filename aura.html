@@ -2448,6 +2448,84 @@
       transform: scale(0.93);
     }
 
+    .player-volume-wrap {
+      position: relative;
+      z-index: 2;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 6px 4px;
+      margin-top: 4px;
+      margin-bottom: 6px;
+    }
+
+    .player-vol-icon-btn {
+      color: var(--soft-lavender);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 4px;
+      border-radius: 50%;
+      cursor: pointer;
+      transition: color 0.18s ease, transform 0.15s ease;
+      flex-shrink: 0;
+    }
+
+    .player-vol-icon-btn:hover {
+      color: #FAF8FF;
+    }
+
+    .player-vol-icon-btn:active {
+      transform: scale(0.9);
+    }
+
+    .player-vol-slider {
+      flex: 1;
+      height: 6px;
+      background: rgba(255, 255, 255, 0.18);
+      border-radius: 999px;
+      position: relative;
+      cursor: pointer;
+      touch-action: none;
+      user-select: none;
+      padding: 4px 0;
+      background-clip: content-box;
+    }
+
+    .player-vol-fill {
+      position: absolute;
+      top: 4px;
+      left: 0;
+      bottom: 4px;
+      width: 80%;
+      background: linear-gradient(90deg, var(--soft-lavender), #FFFFFF);
+      border-radius: 999px;
+      pointer-events: none;
+      box-shadow: 0 0 10px rgba(188, 165, 255, 0.45);
+    }
+
+    .player-vol-thumb {
+      position: absolute;
+      top: 50%;
+      right: -6px;
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: #FFFFFF;
+      box-shadow: 0 1px 6px rgba(0, 0, 0, 0.35);
+      transform: translateY(-50%);
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.15s ease, transform 0.15s ease;
+    }
+
+    .player-vol-slider:hover .player-vol-thumb,
+    .player-vol-slider:active .player-vol-thumb,
+    .player-volume-wrap.is-sliding .player-vol-thumb {
+      opacity: 1;
+      transform: translateY(-50%) scale(1.15);
+    }
+
     .player-bottom-bar {
       position: relative;
       z-index: 2;
@@ -3161,6 +3239,20 @@
       <symbol id="icon-globe" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
         <circle cx="12" cy="12" r="9"/><path d="M3.6 9h16.8M3.6 15h16.8"/><path d="M12 3a13 13 0 0 1 0 18M12 3a13 13 0 0 0 0 18"/>
       </symbol>
+      <symbol id="icon-volume-low" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" fill="currentColor"></polygon>
+        <path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path>
+      </symbol>
+      <symbol id="icon-volume-high" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" fill="currentColor"></polygon>
+        <path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path>
+        <path d="M19.07 4.93a10 10 0 0 1 0 14.14"></path>
+      </symbol>
+      <symbol id="icon-volume-mute" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" fill="currentColor"></polygon>
+        <line x1="23" y1="9" x2="17" y2="15"></line>
+        <line x1="17" y1="9" x2="23" y2="15"></line>
+      </symbol>
     </defs>
   </svg>
 
@@ -3849,6 +3941,20 @@
                 </button>
               </div>
 
+              <!-- Sleek iOS Music Volume Controller -->
+              <div class="player-volume-wrap" id="playerVolumeWrap">
+                <button class="player-vol-icon-btn" id="playerVolDownBtn" aria-label="Mute or lower volume" title="Tắt tiếng / Giảm âm lượng">
+                  <svg width="17" height="17" aria-hidden="true" id="playerVolIcon"><use href="#icon-volume-low"/></svg>
+                </button>
+                <div class="player-vol-slider" id="playerVolSlider" role="slider" aria-label="Volume slider" tabindex="0" aria-valuemin="0" aria-valuemax="100" aria-valuenow="85">
+                  <div class="player-vol-fill" id="playerVolFill" style="width: 85%;"></div>
+                  <div class="player-vol-thumb"></div>
+                </div>
+                <button class="player-vol-icon-btn" id="playerVolUpBtn" aria-label="Increase volume" title="Tăng âm lượng">
+                  <svg width="17" height="17" aria-hidden="true"><use href="#icon-volume-high"/></svg>
+                </button>
+              </div>
+
               <div class="player-bottom-bar">
                 <button class="player-pill-btn" id="playerAddPlaylistBtn">
                   <svg width="14" height="14" aria-hidden="true"><use href="#icon-plus"/></svg>
@@ -4151,7 +4257,8 @@
         savedPlaylists: "aura:v1:saved_playlists",
         userPlaylists: "aura:v1:user_playlists",
         recent: "aura:v1:recent",
-        prefs: "aura:v1:prefs"
+        prefs: "aura:v1:prefs",
+        volume: "aura:v1:volume"
       };
 
       const memoryStorage = {};
@@ -4211,6 +4318,8 @@
         durationSec: 168,
         shuffle: false,
         repeat: "off", // "off" | "all" | "one"
+        volume: Number(readStorage(STORAGE_KEYS.volume, 0.85)),
+        lastVolume: 0.85,
         playerTimerId: null,
         eqTimerId: null,
         localAudioUrl: null,
@@ -5684,6 +5793,49 @@
         }
       }
 
+      function setVolume(val, fromUser) {
+        val = Math.max(0, Math.min(1, Number(val)));
+        state.volume = val;
+        writeStorage(STORAGE_KEYS.volume, val);
+
+        if (audioEl) {
+          audioEl.volume = val;
+        }
+
+        if (activeEngine === "yt" && ytReady && ytPlayer && typeof ytPlayer.setVolume === "function") {
+          ytPlayer.setVolume(Math.round(val * 100));
+          if (val === 0) {
+            if (typeof ytPlayer.mute === "function") ytPlayer.mute();
+          } else {
+            if (typeof ytPlayer.unMute === "function") ytPlayer.unMute();
+          }
+        }
+
+        const fill = document.getElementById("playerVolFill");
+        if (fill) {
+          fill.style.width = (val * 100) + "%";
+        }
+        const slider = document.getElementById("playerVolSlider");
+        if (slider) {
+          slider.setAttribute("aria-valuenow", Math.round(val * 100));
+        }
+
+        const iconUse = document.querySelector("#playerVolIcon use");
+        if (iconUse) {
+          if (val <= 0.01) {
+            iconUse.setAttribute("href", "#icon-volume-mute");
+          } else if (val < 0.45) {
+            iconUse.setAttribute("href", "#icon-volume-low");
+          } else {
+            iconUse.setAttribute("href", "#icon-volume-high");
+          }
+        }
+
+        if (fromUser) {
+          showToast("Âm lượng: " + Math.round(val * 100) + "%");
+        }
+      }
+
       function seekToRatio(ratio) {
         const r = Math.max(0, Math.min(1, ratio));
         const total = state.durationSec || 210;
@@ -6439,6 +6591,7 @@
         updatePlayerUI();
         updateWidgetsUI();
         updateLockScreenUI();
+        setVolume(state.volume, false);
 
         // Preload initial track source cleanly without autoplaying
         const initialTrack = getTrackById(state.currentTrackId);
@@ -6691,6 +6844,91 @@
           const rect = e.currentTarget.getBoundingClientRect();
           seekToRatio((e.clientX - rect.left) / rect.width);
         });
+
+        // Volume Control Slider & Buttons
+        const volSlider = document.getElementById("playerVolSlider");
+        const volWrap = document.getElementById("playerVolumeWrap");
+
+        function handleVolumeEvent(e) {
+          if (!volSlider) return;
+          const rect = volSlider.getBoundingClientRect();
+          const clientX = e.touches && e.touches.length ? e.touches[0].clientX : e.clientX;
+          const ratio = (clientX - rect.left) / rect.width;
+          setVolume(ratio, false);
+        }
+
+        let isVolSliding = false;
+
+        if (volSlider) {
+          volSlider.addEventListener("pointerdown", function (e) {
+            isVolSliding = true;
+            if (volWrap) volWrap.classList.add("is-sliding");
+            volSlider.setPointerCapture(e.pointerId);
+            handleVolumeEvent(e);
+          });
+
+          volSlider.addEventListener("pointermove", function (e) {
+            if (!isVolSliding) return;
+            handleVolumeEvent(e);
+          });
+
+          function stopVolSlide() {
+            if (!isVolSliding) return;
+            isVolSliding = false;
+            if (volWrap) volWrap.classList.remove("is-sliding");
+            showToast("Âm lượng: " + Math.round((state.volume || 0.85) * 100) + "%");
+          }
+
+          volSlider.addEventListener("pointerup", stopVolSlide);
+          volSlider.addEventListener("pointercancel", stopVolSlide);
+        }
+
+        const volDownBtn = document.getElementById("playerVolDownBtn");
+        if (volDownBtn) {
+          volDownBtn.addEventListener("click", function () {
+            if ((state.volume || 0) > 0.05) {
+              state.lastVolume = state.volume;
+              setVolume(0, true);
+            } else {
+              setVolume(state.lastVolume || 0.85, true);
+            }
+          });
+        }
+
+        const volUpBtn = document.getElementById("playerVolUpBtn");
+        if (volUpBtn) {
+          volUpBtn.addEventListener("click", function () {
+            setVolume(Math.min(1, (state.volume || 0.85) + 0.15), true);
+          });
+        }
+
+        // Physical side buttons on iPhone Frame
+        const hwVolUp = document.querySelector(".hw-btn--vol-up");
+        if (hwVolUp) {
+          hwVolUp.style.cursor = "pointer";
+          hwVolUp.addEventListener("click", function () {
+            setVolume((state.volume || 0.85) + 0.1, true);
+          });
+        }
+        const hwVolDown = document.querySelector(".hw-btn--vol-down");
+        if (hwVolDown) {
+          hwVolDown.style.cursor = "pointer";
+          hwVolDown.addEventListener("click", function () {
+            setVolume((state.volume || 0.85) - 0.1, true);
+          });
+        }
+        const hwMute = document.querySelector(".hw-btn--mute");
+        if (hwMute) {
+          hwMute.style.cursor = "pointer";
+          hwMute.addEventListener("click", function () {
+            if ((state.volume || 0) > 0.05) {
+              state.lastVolume = state.volume;
+              setVolume(0, true);
+            } else {
+              setVolume(state.lastVolume || 0.85, true);
+            }
+          });
+        }
         document.getElementById("playerQueueBtn").addEventListener("click", function () {
           openSheet(function (container) {
             const h3 = document.createElement("h3");
