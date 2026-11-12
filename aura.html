@@ -2453,26 +2453,29 @@
       z-index: 2;
       display: flex;
       align-items: center;
-      gap: 10px;
+      gap: 12px;
       padding: 6px 4px;
-      margin-top: 4px;
-      margin-bottom: 6px;
+      margin-top: 6px;
+      margin-bottom: 10px;
+      width: 100%;
     }
 
     .player-vol-icon-btn {
-      color: var(--soft-lavender);
+      color: var(--pale-lavender);
       display: flex;
       align-items: center;
       justify-content: center;
-      padding: 4px;
+      width: 32px;
+      height: 32px;
       border-radius: 50%;
       cursor: pointer;
-      transition: color 0.18s ease, transform 0.15s ease;
+      transition: color 0.18s ease, transform 0.15s ease, background 0.15s ease;
       flex-shrink: 0;
     }
 
     .player-vol-icon-btn:hover {
       color: #FAF8FF;
+      background: rgba(255, 255, 255, 0.12);
     }
 
     .player-vol-icon-btn:active {
@@ -2481,49 +2484,123 @@
 
     .player-vol-slider {
       flex: 1;
-      height: 6px;
-      background: rgba(255, 255, 255, 0.18);
-      border-radius: 999px;
+      height: 32px;
+      display: flex;
+      align-items: center;
       position: relative;
       cursor: pointer;
       touch-action: none;
       user-select: none;
-      padding: 4px 0;
-      background-clip: content-box;
+    }
+
+    .player-vol-track {
+      width: 100%;
+      height: 6px;
+      background: rgba(255, 255, 255, 0.22);
+      border-radius: 999px;
+      position: relative;
+      overflow: visible;
+      pointer-events: none;
     }
 
     .player-vol-fill {
-      position: absolute;
-      top: 4px;
-      left: 0;
-      bottom: 4px;
-      width: 80%;
-      background: linear-gradient(90deg, var(--soft-lavender), #FFFFFF);
+      height: 100%;
+      width: 85%;
+      background: linear-gradient(90deg, #BCA5FF, #FFFFFF);
       border-radius: 999px;
-      pointer-events: none;
-      box-shadow: 0 0 10px rgba(188, 165, 255, 0.45);
+      position: relative;
+      box-shadow: 0 0 10px rgba(188, 165, 255, 0.55);
+      transition: width 0.06s ease;
     }
 
-    .player-vol-thumb {
+    .player-vol-fill::after {
+      content: "";
       position: absolute;
+      right: -7px;
       top: 50%;
-      right: -6px;
-      width: 14px;
-      height: 14px;
+      transform: translateY(-50%);
+      width: 16px;
+      height: 16px;
       border-radius: 50%;
       background: #FFFFFF;
-      box-shadow: 0 1px 6px rgba(0, 0, 0, 0.35);
-      transform: translateY(-50%);
-      pointer-events: none;
-      opacity: 0;
-      transition: opacity 0.15s ease, transform 0.15s ease;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.45), 0 0 6px #FFFFFF;
+      cursor: grab;
+      transition: transform 0.14s ease;
     }
 
-    .player-vol-slider:hover .player-vol-thumb,
-    .player-vol-slider:active .player-vol-thumb,
-    .player-volume-wrap.is-sliding .player-vol-thumb {
+    .player-vol-slider:hover .player-vol-fill::after,
+    .player-vol-slider:active .player-vol-fill::after,
+    .player-volume-wrap.is-sliding .player-vol-fill::after {
+      transform: translateY(-50%) scale(1.25);
+    }
+
+    /* Native iOS Vertical Volume HUD (Left Edge Capsule) */
+    .ios-volume-hud {
+      position: absolute;
+      top: 130px;
+      left: 10px;
+      z-index: 55;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 6px;
+      opacity: 0;
+      transform: translateX(-16px) scale(0.92);
+      pointer-events: none;
+      transition: opacity 0.22s ease, transform 0.24s cubic-bezier(0.22, 1, 0.36, 1);
+      touch-action: none;
+      user-select: none;
+      cursor: ns-resize;
+    }
+
+    .ios-volume-hud.is-active {
       opacity: 1;
-      transform: translateY(-50%) scale(1.15);
+      transform: translateX(0) scale(1);
+      pointer-events: auto;
+    }
+
+    .ios-volume-hud-pill {
+      width: 32px;
+      height: 124px;
+      border-radius: 18px;
+      background: rgba(23, 22, 56, 0.88);
+      backdrop-filter: blur(20px);
+      border: 1px solid rgba(255, 255, 255, 0.22);
+      box-shadow: 0 10px 28px rgba(0, 0, 0, 0.5);
+      position: relative;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column-reverse;
+      align-items: center;
+    }
+
+    .ios-volume-hud-fill {
+      width: 100%;
+      height: 85%;
+      background: linear-gradient(180deg, #FFFFFF, var(--soft-lavender));
+      border-radius: 0 0 16px 16px;
+      transition: height 0.06s ease;
+      box-shadow: 0 -2px 10px rgba(188, 165, 255, 0.5);
+    }
+
+    .ios-volume-hud-icon {
+      position: absolute;
+      bottom: 8px;
+      z-index: 2;
+      color: #171638;
+      pointer-events: none;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: color 0.15s ease;
+    }
+
+    .ios-volume-hud-text {
+      font-size: 11px;
+      font-weight: 700;
+      color: #FFFFFF;
+      text-shadow: 0 2px 4px rgba(0, 0, 0, 0.7);
+      font-variant-numeric: tabular-nums;
     }
 
     .player-bottom-bar {
@@ -3287,6 +3364,17 @@
       <button class="hw-btn hw-btn--power" id="powerBtn" aria-label="Power button — Lock or Unlock screen" title="Power: Nhấn để khóa / mở màn hình"></button>
 
       <div class="iphone-screen">
+        <!-- Native iOS Vertical Volume Slider (Left Edge HUD - Drag Up/Down) -->
+        <div class="ios-volume-hud" id="iosVolumeHud" role="slider" aria-label="Âm lượng" tabindex="0" title="Kéo lên / xuống để chỉnh âm lượng">
+          <div class="ios-volume-hud-pill" id="iosVolumeHudPill">
+            <div class="ios-volume-hud-fill" id="iosVolumeHudFill" style="height: 85%;"></div>
+            <div class="ios-volume-hud-icon" id="iosVolumeHudIcon">
+              <svg width="15" height="15"><use href="#icon-volume-high"/></svg>
+            </div>
+          </div>
+          <div class="ios-volume-hud-text" id="iosVolumeHudText">85%</div>
+        </div>
+
         <!-- Status Bar -->
         <div class="status-bar" id="statusBar">
           <span id="statusTime">9:41</span>
@@ -3944,14 +4032,15 @@
               <!-- Sleek iOS Music Volume Controller -->
               <div class="player-volume-wrap" id="playerVolumeWrap">
                 <button class="player-vol-icon-btn" id="playerVolDownBtn" aria-label="Mute or lower volume" title="Tắt tiếng / Giảm âm lượng">
-                  <svg width="17" height="17" aria-hidden="true" id="playerVolIcon"><use href="#icon-volume-low"/></svg>
+                  <svg width="18" height="18" aria-hidden="true" id="playerVolIcon"><use href="#icon-volume-low"/></svg>
                 </button>
                 <div class="player-vol-slider" id="playerVolSlider" role="slider" aria-label="Volume slider" tabindex="0" aria-valuemin="0" aria-valuemax="100" aria-valuenow="85">
-                  <div class="player-vol-fill" id="playerVolFill" style="width: 85%;"></div>
-                  <div class="player-vol-thumb"></div>
+                  <div class="player-vol-track">
+                    <div class="player-vol-fill" id="playerVolFill" style="width: 85%;"></div>
+                  </div>
                 </div>
                 <button class="player-vol-icon-btn" id="playerVolUpBtn" aria-label="Increase volume" title="Tăng âm lượng">
-                  <svg width="17" height="17" aria-hidden="true"><use href="#icon-volume-high"/></svg>
+                  <svg width="18" height="18" aria-hidden="true"><use href="#icon-volume-high"/></svg>
                 </button>
               </div>
 
@@ -5793,7 +5882,19 @@
         }
       }
 
-      function setVolume(val, fromUser) {
+      let volHudTimeout = null;
+
+      function showIosVolumeHud() {
+        const hud = document.getElementById("iosVolumeHud");
+        if (!hud) return;
+        hud.classList.add("is-active");
+        if (volHudTimeout) clearTimeout(volHudTimeout);
+        volHudTimeout = setTimeout(function () {
+          hud.classList.remove("is-active");
+        }, 1600);
+      }
+
+      function setVolume(val, fromUser, showHud) {
         val = Math.max(0, Math.min(1, Number(val)));
         state.volume = val;
         writeStorage(STORAGE_KEYS.volume, val);
@@ -5811,6 +5912,7 @@
           }
         }
 
+        // Horizontal bar fill
         const fill = document.getElementById("playerVolFill");
         if (fill) {
           fill.style.width = (val * 100) + "%";
@@ -5831,8 +5933,28 @@
           }
         }
 
-        if (fromUser) {
-          showToast("Âm lượng: " + Math.round(val * 100) + "%");
+        // Vertical iOS Volume HUD fill & icon
+        const hudFill = document.getElementById("iosVolumeHudFill");
+        if (hudFill) {
+          hudFill.style.height = (val * 100) + "%";
+        }
+        const hudText = document.getElementById("iosVolumeHudText");
+        if (hudText) {
+          hudText.textContent = Math.round(val * 100) + "%";
+        }
+        const hudIconUse = document.querySelector("#iosVolumeHudIcon use");
+        if (hudIconUse) {
+          if (val <= 0.01) {
+            hudIconUse.setAttribute("href", "#icon-volume-mute");
+          } else if (val < 0.45) {
+            hudIconUse.setAttribute("href", "#icon-volume-low");
+          } else {
+            hudIconUse.setAttribute("href", "#icon-volume-high");
+          }
+        }
+
+        if (showHud || fromUser) {
+          showIosVolumeHud();
         }
       }
 
@@ -6854,7 +6976,7 @@
           const rect = volSlider.getBoundingClientRect();
           const clientX = e.touches && e.touches.length ? e.touches[0].clientX : e.clientX;
           const ratio = (clientX - rect.left) / rect.width;
-          setVolume(ratio, false);
+          setVolume(ratio, false, true);
         }
 
         let isVolSliding = false;
@@ -6888,9 +7010,9 @@
           volDownBtn.addEventListener("click", function () {
             if ((state.volume || 0) > 0.05) {
               state.lastVolume = state.volume;
-              setVolume(0, true);
+              setVolume(0, true, true);
             } else {
-              setVolume(state.lastVolume || 0.85, true);
+              setVolume(state.lastVolume || 0.85, true, true);
             }
           });
         }
@@ -6898,7 +7020,7 @@
         const volUpBtn = document.getElementById("playerVolUpBtn");
         if (volUpBtn) {
           volUpBtn.addEventListener("click", function () {
-            setVolume(Math.min(1, (state.volume || 0.85) + 0.15), true);
+            setVolume(Math.min(1, (state.volume || 0.85) + 0.15), true, true);
           });
         }
 
@@ -6907,14 +7029,14 @@
         if (hwVolUp) {
           hwVolUp.style.cursor = "pointer";
           hwVolUp.addEventListener("click", function () {
-            setVolume((state.volume || 0.85) + 0.1, true);
+            setVolume((state.volume || 0.85) + 0.1, true, true);
           });
         }
         const hwVolDown = document.querySelector(".hw-btn--vol-down");
         if (hwVolDown) {
           hwVolDown.style.cursor = "pointer";
           hwVolDown.addEventListener("click", function () {
-            setVolume((state.volume || 0.85) - 0.1, true);
+            setVolume((state.volume || 0.85) - 0.1, true, true);
           });
         }
         const hwMute = document.querySelector(".hw-btn--mute");
@@ -6923,11 +7045,68 @@
           hwMute.addEventListener("click", function () {
             if ((state.volume || 0) > 0.05) {
               state.lastVolume = state.volume;
-              setVolume(0, true);
+              setVolume(0, true, true);
             } else {
-              setVolume(state.lastVolume || 0.85, true);
+              setVolume(state.lastVolume || 0.85, true, true);
             }
           });
+        }
+
+        // Native iOS Vertical Volume HUD (Left Edge - Drag Up/Down)
+        const iosHud = document.getElementById("iosVolumeHud");
+        const iosHudPill = document.getElementById("iosVolumeHudPill");
+        if (iosHud && iosHudPill) {
+          let isHudSliding = false;
+          function handleHudSlide(e) {
+            const rect = iosHudPill.getBoundingClientRect();
+            const clientY = e.touches && e.touches.length ? e.touches[0].clientY : e.clientY;
+            const ratio = 1 - ((clientY - rect.top) / rect.height);
+            setVolume(ratio, false, true);
+          }
+          iosHud.addEventListener("pointerdown", function (e) {
+            isHudSliding = true;
+            iosHud.setPointerCapture(e.pointerId);
+            handleHudSlide(e);
+          });
+          iosHud.addEventListener("pointermove", function (e) {
+            if (!isHudSliding) return;
+            handleHudSlide(e);
+          });
+          function stopHudSlide() {
+            if (!isHudSliding) return;
+            isHudSliding = false;
+          }
+          iosHud.addEventListener("pointerup", stopHudSlide);
+          iosHud.addEventListener("pointercancel", stopHudSlide);
+        }
+
+        // Swipe UP / DOWN on Album Art Stage to increase/decrease volume
+        const artStage = document.querySelector(".player-art-stage");
+        if (artStage) {
+          let artStartY = 0;
+          let artStartVol = 0;
+          let isArtSwiping = false;
+
+          artStage.addEventListener("pointerdown", function (e) {
+            artStartY = e.clientY;
+            artStartVol = state.volume || 0.85;
+            isArtSwiping = true;
+          });
+
+          artStage.addEventListener("pointermove", function (e) {
+            if (!isArtSwiping) return;
+            const deltaY = artStartY - e.clientY;
+            if (Math.abs(deltaY) > 5) {
+              const deltaVol = deltaY / 160;
+              setVolume(artStartVol + deltaVol, false, true);
+            }
+          });
+
+          function stopArtSwipe() {
+            isArtSwiping = false;
+          }
+          artStage.addEventListener("pointerup", stopArtSwipe);
+          artStage.addEventListener("pointercancel", stopArtSwipe);
         }
         document.getElementById("playerQueueBtn").addEventListener("click", function () {
           openSheet(function (container) {
