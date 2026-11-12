@@ -4812,28 +4812,104 @@
         updateWidgetsUI();
       }
 
-      function filterHomeMusic(queryOrMood) {
+      function filterHomeMusic(queryOrMood, type) {
         const sec = document.getElementById("homeSearchResultsSection");
         const list = document.getElementById("homeSearchTrackList");
         const title = document.getElementById("homeSearchSectionTitle");
         if (!sec || !list) return;
 
-        const results = searchTracks(queryOrMood, queryOrMood);
+        const raw = (queryOrMood || "").trim();
+        if (!raw) {
+          clearHomeMusicFilter();
+          return;
+        }
+
+        const lower = raw.toLowerCase();
+        const isMood = type === "mood" || ["calm", "focus", "study", "happy", "relax", "sleep", "energetic"].indexOf(lower) !== -1;
+        const isGenre = type === "genre" || GENRES.some(function (g) { return g.name.toLowerCase() === lower; });
+
+        let results = [];
+        if (isMood) {
+          const moodKey = lower === "focus" ? "study" : (lower === "relax" ? "sleep" : lower);
+          results = searchTracks("", moodKey);
+          if (title) title.textContent = "Tâm trạng: " + raw.toUpperCase();
+        } else if (isGenre) {
+          results = searchTracks("", lower);
+          if (title) title.textContent = "Thể loại: " + raw.toUpperCase();
+        } else {
+          results = searchTracks(raw, "all");
+          if (title) title.textContent = "Kết quả cho: \"" + raw + "\"";
+        }
+
         clearNode(list);
         sec.style.display = "block";
-        if (title) title.textContent = "Gợi ý: " + (queryOrMood.toUpperCase());
 
-        if (!results.length) {
+        if (results.length > 0) {
+          results.slice(0, 15).forEach(function (tr) {
+            list.appendChild(createTrackRow(tr));
+          });
+        }
+
+        if (!isMood && !isGenre) {
+          if (results.length === 0) {
+            const loading = document.createElement("div");
+            loading.className = "empty-state";
+            loading.id = "homeSearchStatusMsg";
+            loading.textContent = "Đang tìm kiếm bài hát của \"" + raw + "\" trên Apple Music & YouTube...";
+            list.appendChild(loading);
+          }
+          performLiveHomeSearch(raw);
+        } else if (results.length === 0) {
           const empty = document.createElement("div");
           empty.className = "empty-state";
           empty.textContent = "Không tìm thấy bài hát phù hợp trong danh mục.";
           list.appendChild(empty);
-        } else {
-          results.slice(0, 10).forEach(function (tr) {
-            list.appendChild(createTrackRow(tr));
-          });
         }
+
         sec.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+
+      function performLiveHomeSearch(query) {
+        const clean = (query || "").trim();
+        if (!clean) return;
+
+        fetchItunesJSONP(clean, "VN", 24, function (dataVN) {
+          const itemsVN = dataVN && Array.isArray(dataVN.results) ? dataVN.results.filter(function (r) { return r.previewUrl; }) : [];
+          if (itemsVN.length > 0) {
+            renderLiveHomeResults(clean, itemsVN);
+            return;
+          }
+          fetchItunesJSONP(clean, "US", 24, function (dataUS) {
+            const itemsUS = dataUS && Array.isArray(dataUS.results) ? dataUS.results.filter(function (r) { return r.previewUrl; }) : [];
+            if (itemsUS.length > 0) {
+              renderLiveHomeResults(clean, itemsUS);
+            } else {
+              const statusEl = document.getElementById("homeSearchStatusMsg");
+              if (statusEl) {
+                statusEl.textContent = "Không tìm thấy bài hát nào cho \"" + clean + "\". Hãy thử tìm bài hát hoặc nghệ sĩ khác.";
+              }
+            }
+          });
+        });
+      }
+
+      function renderLiveHomeResults(query, items) {
+        const list = document.getElementById("homeSearchTrackList");
+        const title = document.getElementById("homeSearchSectionTitle");
+        const inp = document.getElementById("homeSearchInput");
+        if (!list) return;
+
+        if (inp && inp.value.trim() && inp.value.trim().toLowerCase() !== query.toLowerCase()) {
+          return;
+        }
+
+        const mapped = items.map(function (it) { return mapItunesItemToTrack(it); });
+        clearNode(list);
+        if (title) title.textContent = "Kết quả cho: \"" + query + "\" (" + mapped.length + " bài hát)";
+
+        mapped.forEach(function (tr) {
+          list.appendChild(createTrackRow(tr));
+        });
       }
 
       function clearHomeMusicFilter() {
@@ -6408,8 +6484,7 @@
           e.preventDefault();
           const q = document.getElementById("homeSearchInput").value.trim();
           if (q) {
-            filterHomeMusic(q);
-            searchGlobalMusic(q);
+            filterHomeMusic(q, "query");
           }
         });
         document.getElementById("homeSearchInput").addEventListener("input", function (e) {
@@ -6418,18 +6493,17 @@
             clearHomeMusicFilter();
             return;
           }
-          filterHomeMusic(q);
           if (liveSearchDebounce) clearTimeout(liveSearchDebounce);
           liveSearchDebounce = setTimeout(function () {
-            searchGlobalMusic(q);
-          }, 450);
+            filterHomeMusic(q, "query");
+          }, 350);
         });
 
         document.querySelectorAll(".mood-card").forEach(function (card) {
           card.addEventListener("click", function () {
             const mood = card.dataset.mood;
             state.discoverFilter = mood;
-            filterHomeMusic(mood);
+            filterHomeMusic(mood, "mood");
             const titleEl = card.querySelector(".mood-title");
             showToast("Tâm trạng: " + (titleEl ? titleEl.textContent : mood));
           });
