@@ -5753,11 +5753,17 @@
         const artBox = document.createElement("div");
         artBox.className = "track-art-sm";
         artBox.appendChild(createTrackArtNode(track));
-        artBox.addEventListener("click", function () { openPlayer(track.id); });
+        artBox.addEventListener("click", function () {
+          if (opts.onPlayContext) opts.onPlayContext();
+          openPlayer(track.id);
+        });
 
         const info = document.createElement("div");
         info.className = "track-info";
-        info.addEventListener("click", function () { openPlayer(track.id); });
+        info.addEventListener("click", function () {
+          if (opts.onPlayContext) opts.onPlayContext();
+          openPlayer(track.id);
+        });
 
         const titleEl = document.createElement("div");
         titleEl.className = "track-title";
@@ -5914,8 +5920,13 @@
 
           const list = document.createElement("div");
           list.className = "track-list";
+          const allPlIds = playlist.trackIds.slice();
           playlist.trackIds.forEach(function (id) {
-            list.appendChild(createTrackRow(getTrackById(id)));
+            list.appendChild(createTrackRow(getTrackById(id), {
+              onPlayContext: function () {
+                state.queue = allPlIds.slice();
+              }
+            }));
           });
           container.appendChild(list);
         });
@@ -6004,8 +6015,13 @@
         sec.style.display = "block";
 
         if (results.length > 0) {
+          const allResIds = results.slice(0, 15).map(function (x) { return x.id; });
           results.slice(0, 15).forEach(function (tr) {
-            list.appendChild(createTrackRow(tr));
+            list.appendChild(createTrackRow(tr, {
+              onPlayContext: function () {
+                state.queue = allResIds.slice();
+              }
+            }));
           });
         }
 
@@ -6108,8 +6124,13 @@
         clearNode(list);
         if (title) title.textContent = "Kết quả cho: \"" + query + "\" (" + mapped.length + " bài hát)";
 
+        const allMappedIds = mapped.map(function (x) { return x.id; });
         mapped.forEach(function (tr) {
-          list.appendChild(createTrackRow(tr));
+          list.appendChild(createTrackRow(tr, {
+            onPlayContext: function () {
+              state.queue = allMappedIds.slice();
+            }
+          }));
         });
       }
 
@@ -6286,8 +6307,14 @@
           empty.textContent = "Không tìm thấy trong danh sách có sẵn. Nhấn Enter để tìm toàn cầu.";
           list.appendChild(empty);
         } else {
-          results.slice(0, state.discoverQuery || state.discoverFilter !== "all" ? 24 : 12).forEach(function (t) {
-            list.appendChild(createTrackRow(t));
+          const sliceLimit = state.discoverQuery || state.discoverFilter !== "all" ? 24 : 12;
+          const allDiscIds = results.slice(0, sliceLimit).map(function (x) { return x.id; });
+          results.slice(0, sliceLimit).forEach(function (t) {
+            list.appendChild(createTrackRow(t, {
+              onPlayContext: function () {
+                state.queue = allDiscIds.slice();
+              }
+            }));
           });
         }
 
@@ -6564,8 +6591,13 @@
         document.getElementById("aiExplainText").textContent = res.explanation;
         const container = document.getElementById("aiResultTracks");
         clearNode(container);
+        const allTrackIds = res.tracks.map(function (t) { return t.id; });
         res.tracks.forEach(function (t) {
-          container.appendChild(createTrackRow(t));
+          container.appendChild(createTrackRow(t, {
+            onPlayContext: function () {
+              state.queue = allTrackIds.slice();
+            }
+          }));
         });
       }
 
@@ -6687,6 +6719,18 @@
             if (dur && isFinite(dur) && dur > 0) state.durationSec = dur;
             if (isFinite(cur)) state.progressSec = cur;
             updateProgressUI();
+            if (dur > 6 && cur >= dur - 0.75) {
+              if (ytPollTimerId) {
+                clearInterval(ytPollTimerId);
+                ytPollTimerId = null;
+              }
+              if (state.repeat === "one") {
+                ytPlayer.seekTo(0, true);
+                ytPlayer.playVideo();
+              } else if (state.prefs.autoNext) {
+                nextTrack(true);
+              }
+            }
           } catch (e) {}
         }, 450);
       }
@@ -6764,6 +6808,9 @@
       function setCurrentTrack(trackId, shouldPlay) {
         const track = getTrackById(trackId);
         state.currentTrackId = track.id;
+        if (state.queue.indexOf(track.id) === -1) {
+          state.queue.push(track.id);
+        }
         state.progressSec = 0;
         state.durationSec = track.fullDurationSec || track.durationSec || 210;
         ytAttemptIdx = 0;
@@ -7036,28 +7083,53 @@
         updateProgressUI();
       }
 
+      let isTransitioningTrack = false;
+
       function nextTrack(fromAuto) {
-        const q = state.queue.length ? state.queue : TRACKS.map(function (t) { return t.id; });
+        if (isTransitioningTrack) return;
+        isTransitioningTrack = true;
+        setTimeout(function () { isTransitioningTrack = false; }, 800);
+
+        let q = state.queue.length ? state.queue.slice() : TRACKS.map(function (t) { return t.id; });
         let idx = q.indexOf(state.currentTrackId);
+
+        if (idx === -1) {
+          q.push(state.currentTrackId);
+          state.queue = q;
+          idx = q.length - 1;
+        }
+
+        if (fromAuto && state.repeat === "one") {
+          setCurrentTrack(state.currentTrackId, true);
+          return;
+        }
+
         if (state.shuffle && q.length > 1) {
           let rand = Math.floor(Math.random() * q.length);
           if (rand === idx) rand = (idx + 1) % q.length;
           setCurrentTrack(q[rand], true);
           return;
         }
-        if (idx === -1 || idx + 1 >= q.length) {
-          if (fromAuto && state.repeat === "off") {
+
+        let nextIdx = idx + 1;
+        if (nextIdx >= q.length) {
+          if (state.prefs.autoNext || state.repeat === "all" || !fromAuto) {
+            nextIdx = 0;
+          } else {
             pausePlaybackTimer();
             state.progressSec = 0;
             if (audioEl.src) audioEl.currentTime = 0;
             updateProgressUI();
             return;
           }
-          idx = 0;
-        } else {
-          idx += 1;
         }
-        setCurrentTrack(q[idx], true);
+
+        const nextTrackId = q[nextIdx];
+        const nextTrackObj = getTrackById(nextTrackId);
+        if (fromAuto && nextTrackObj) {
+          showToast("Đang tự phát tiếp: " + nextTrackObj.title + " 🎵");
+        }
+        setCurrentTrack(nextTrackId, true);
       }
 
       function prevTrack() {
@@ -7502,10 +7574,15 @@
           const list = document.createElement("div");
           list.className = "track-list";
           const seen = {};
+          const allLiked = state.likes.slice();
           state.likes.forEach(function (id) {
             if (!seen[id]) {
               seen[id] = true;
-              list.appendChild(createTrackRow(getTrackById(id)));
+              list.appendChild(createTrackRow(getTrackById(id), {
+                onPlayContext: function () {
+                  state.queue = allLiked.slice();
+                }
+              }));
             }
           });
           container.appendChild(list);
@@ -7580,8 +7657,13 @@
 
           const list = document.createElement("div");
           list.className = "track-list";
+          const allRecent = state.recentIds.slice();
           state.recentIds.forEach(function (id) {
-            list.appendChild(createTrackRow(getTrackById(id)));
+            list.appendChild(createTrackRow(getTrackById(id), {
+              onPlayContext: function () {
+                state.queue = allRecent.slice();
+              }
+            }));
           });
           container.appendChild(list);
         } else if (state.libraryTab === "mine") {
@@ -7825,6 +7907,14 @@
           state.progressSec = audioEl.currentTime;
           if (audioEl.duration && isFinite(audioEl.duration)) {
             state.durationSec = audioEl.duration;
+            if (audioEl.duration > 4 && audioEl.currentTime >= audioEl.duration - 0.45) {
+              if (state.repeat === "one") {
+                audioEl.currentTime = 0;
+                audioEl.play().catch(function () {});
+              } else if (state.prefs.autoNext) {
+                nextTrack(true);
+              }
+            }
           }
           updateProgressUI();
         });
